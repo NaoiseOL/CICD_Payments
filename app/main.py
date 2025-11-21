@@ -1,7 +1,7 @@
 from fastapi import FastAPI
-from app.bookings import app as booking_app
-from app.users import app as users_app
-from app.payments import app as payments_app
+from bookings_service.bookings import app as booking_app
+from users_service.users import app as users_app
+from payments_service.payments import app as payments_app
 
 app = FastAPI()
 

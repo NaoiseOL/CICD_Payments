@@ -4,11 +4,12 @@ from sqlalchemy import String, Integer, ForeignKey
 
 class Base(DeclarativeBase):
     pass
-
-class BookingsDB(Base):
-    __tablename__ = "bookings"
+    
+class UserDB(Base):
+    __tablename__ = "users"
     id: Mapped[int] = mapped_column(primary_key=True)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     surname: Mapped[str] = mapped_column(String(100), nullable=False)
-    start_Date: Mapped[str] = mapped_column(String(100), nullable=False)
-    end_Date: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[str] = mapped_column(unique=True, nullable=False)
+    age: Mapped[int] = mapped_column(Integer, nullable=False)
+    phoneNo: Mapped[str] = mapped_column(unique=True, nullable=False)
