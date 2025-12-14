@@ -24,4 +24,11 @@ class PaymentRead(BaseModel):
     CVV: CVVStr
     billing_address: billing_addressStr
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True) 
+
+class PaymentUpdate(BaseModel):
+    card_no: Optional[card_noStr] = None
+    expiry: Optional[expiryStr] = None
+    nameOnCard: Optional[nameOnCardStr] = None
+    CVV: Optional[CVVStr] = None
+    billing_address: Optional[billing_addressStr] = None
