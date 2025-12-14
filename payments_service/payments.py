@@ -1,12 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from .database import engine, SessionLocal
 from .models import Base, PaymentsDB
-from .schemas import PaymentCreate, PaymentRead
+from .schemas import PaymentCreate, PaymentRead, PaymentUpdate
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -87,3 +87,20 @@ def delete_payments(payments_id: int, db: Session = Depends(get_db)) -> Response
     db.delete_payments
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+@app.patch("/api/payments/{payment_id}", response_model=PaymentRead)
+def patch_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depends(get_db)):
+    payment = db.get(PaymentsDB, payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment Not Found")
+
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(payment, field, value)
+
+    try:
+        db.commit()
+        db.refresh(payment)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Payment Patch failed")
+    return payment
