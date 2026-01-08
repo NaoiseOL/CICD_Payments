@@ -7,6 +7,8 @@ from sqlalchemy.exc import IntegrityError
 from .database import engine, SessionLocal
 from .models import Base, PaymentsDB
 from .schemas import PaymentCreate, PaymentRead, PaymentUpdate
+from .rabbit import publish_event
+import asyncio
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,7 +50,7 @@ def get_payments(payments_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/payments", response_model=PaymentRead, status_code=status.HTTP_201_CREATED)
-def add_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
+async def add_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     payment = PaymentsDB(**payload.dict(exclude_unset=True))
     db.add(payment)
     try:
@@ -57,39 +59,75 @@ def add_payment(payload: PaymentCreate, db: Session = Depends(get_db)):
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="Payment already exists")
+
+    asyncio.create_task(
+        publish_event(
+            "payment.created",
+            {
+                "id": payment.payment_id,
+                "nameOnCard": payment.nameOnCard,
+                "billing_address": payment.billing_address
+            }
+        )
+    )
+    
     return payment
 
-@app.put("/api/payments/{payments_id}", response_model=PaymentRead)
-def replace_payment(payments_id: int, payload: PaymentCreate, db: Session = Depends(get_db)):
-    payments = db.get(PaymentsDB, payments_id)
-    if not payments:
+@app.put("/api/payments/{payment_id}", response_model=PaymentRead)
+async def replace_payment(payment_id: int, payload: PaymentCreate, db: Session = Depends(get_db)):
+    payment = db.get(PaymentsDB, payment_id)
+    if not payment:
         raise HTTPException(status_code=404, detail="payments not found")
 
-    payments.card_no = payload.card_no
-    payments.expiry = payload.expiry
-    payments.nameOnCard = payload.nameOnCard
-    payments.CVV = payload.CVV
-    payments.billing_address = payload.billing_address
+    payment.card_no = payload.card_no
+    payment.expiry = payload.expiry
+    payment.nameOnCard = payload.nameOnCard
+    payment.CVV = payload.CVV
+    payment.billing_address = payload.billing_address
 
     try:
         db.commit()
-        db.refresh(payments)
+        db.refresh(payment)
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="payment update Failed")
-    return payments
 
-@app.delete("/api/payments/{payments_id}", status_code=204)
-def delete_payments(payments_id: int, db: Session = Depends(get_db)) -> Response:
-    payments = db.get(PaymentsDB, payments_id)
-    if not payments:
-        raise HTTPException(status_code=404, detail="payments not found")
-    db.delete_payments
+    asyncio.create_task(
+        publish_event(
+            "payment.updated",
+            {
+                "id": payment.payment_id,
+                "nameOnCard": payment.nameOnCard,
+                "billing_address": payment.billing_address
+            }
+        )
+    )
+
+    return payment
+
+@app.delete("/api/payments/{payment_id}", status_code=204)
+async def delete_payment(payment_id: int, db: Session = Depends(get_db)) -> Response:
+    payment = db.get(PaymentsDB, payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="payment not found")
+
+    asyncio.create_task(
+        publish_event(
+            "payment.deleted",
+            {
+                "id": payment.payment_id,
+                "nameOnCard": payment.nameOnCard,
+                "billing_address": payment.billing_address
+            }
+        )
+    )
+
+    db.delete(payment)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 @app.patch("/api/payments/{payment_id}", response_model=PaymentRead)
-def patch_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depends(get_db)):
+async def patch_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depends(get_db)):
     payment = db.get(PaymentsDB, payment_id)
     if not payment:
         raise HTTPException(status_code=404, detail="Payment Not Found")
@@ -103,4 +141,16 @@ def patch_payment(payment_id: int, payload: PaymentUpdate, db: Session = Depends
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=409, detail="Payment Patch failed")
+
+    asyncio.create_task(
+        publish_event(
+            "payment.patched",
+            {
+                "id": payment.payment_id,
+                "nameOnCard": payment.nameOnCard,
+                "billing_address": payment.billing_address
+            }
+        )
+    )
+
     return payment
